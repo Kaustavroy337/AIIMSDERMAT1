@@ -62,10 +62,12 @@
       const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
       // Doctor names
-      const DOCTORS = ['DR. SANJIV CHOUDHARY', 'DR. JANANI P', 'DR. ANKITA SRIVASTAVA'];
+      const DOCTORS = ['Dr 1', 'Dr 2', 'Dr 3'];
       let currentDoctorIndex = 0;
       let availableDoctors = [];
       let lastTokenNumbers = {};
+      let allTokens = {};
+      let toggleInterval = null;
 
       const roomEl = document.getElementById('roomNo');
       const tokenEl = document.getElementById('tokenNumber');
@@ -118,8 +120,6 @@
         tokenEl.textContent = toHindiDigits(token);
       }
 
-      let allTokens = {};
-
       // Update display for current doctor
       async function updateDisplayForCurrentDoctor() {
         allTokens = await fetchAllDoctors();
@@ -148,6 +148,12 @@
         renderDisplay(tokenData);
       }
 
+      // Function to reset the interval timer
+      function resetInterval() {
+        if (toggleInterval) clearInterval(toggleInterval);
+        toggleInterval = setInterval(toggleDoctorAndUpdate, 20000);
+      }
+
       // Toggle doctor every 20 seconds
       async function toggleDoctorAndUpdate() {
         if (availableDoctors.length > 1) {
@@ -158,17 +164,30 @@
 
       // Initial load
       await updateDisplayForCurrentDoctor();
+      resetInterval();
 
       // Real-time updates from Supabase
       supabaseClient
         .channel('realtime running_token_details')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'running_token_details' }, async () => {
-          await updateDisplayForCurrentDoctor();
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'running_token_details' }, async (payload) => {
+          const changedDoctor = payload.new["DOCTOR NAME"];
+          if (DOCTORS.includes(changedDoctor)) {
+            const newTokenData = await fetchDoctorToken(changedDoctor);
+            if (newTokenData) {
+              // Immediately show the concerned doctor's new token
+              renderDisplay(newTokenData);
+              tokenEl.classList.remove('flicker');
+              void tokenEl.offsetWidth;
+              tokenEl.classList.add('flicker');
+
+              // Update tracking and reset timer
+              lastTokenNumbers[changedDoctor] = newTokenData["TOKEN NUMBER"];
+              currentDoctorIndex = DOCTORS.indexOf(changedDoctor);
+              resetInterval();
+            }
+          }
         })
         .subscribe();
-
-      // Toggle every 20 seconds
-      setInterval(toggleDoctorAndUpdate, 20000);
     });
   </script>
 </body>
