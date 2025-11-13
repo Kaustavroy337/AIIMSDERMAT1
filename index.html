@@ -61,8 +61,7 @@
       
       const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
-      // Doctor names
-      const DOCTORS = ['Dr 1', 'Dr 2', 'Dr 3'];
+      const DOCTORS = ['DR. SANJIV CHOUDHARY', 'DR. ANKITA SRIVASTAVA', 'DR. JANANI P'];
       let currentDoctorIndex = 0;
       let availableDoctors = [];
       let lastTokenNumbers = {};
@@ -105,7 +104,7 @@
         }, {});
       }
 
-      // Render display (Hindi only, no doctor name)
+      // Render display
       function renderDisplay(tokenData) {
         if (!tokenData) {
           roomEl.textContent = '';
@@ -148,10 +147,10 @@
         renderDisplay(tokenData);
       }
 
-      // Function to reset the interval timer
+      // Reset 20s toggle timer
       function resetInterval() {
         if (toggleInterval) clearInterval(toggleInterval);
-        toggleInterval = setInterval(toggleDoctorAndUpdate, 20000);
+        toggleInterval = setInterval(toggleDoctorAndUpdate, 10000);
       }
 
       // Toggle doctor every 20 seconds
@@ -162,32 +161,37 @@
         await updateDisplayForCurrentDoctor();
       }
 
+      // Detect new tokens via 2-second polling
+      async function pollForUpdates() {
+        const newTokens = await fetchAllDoctors();
+
+        // Check if any doctor has a new token
+        for (const doc of DOCTORS) {
+          const tokenData = newTokens[doc];
+          const newToken = tokenData ? tokenData["TOKEN NUMBER"] : null;
+          const oldToken = lastTokenNumbers[doc];
+
+          if (tokenData && newToken !== oldToken) {
+            // New token found
+            renderDisplay(tokenData);
+            tokenEl.classList.remove('flicker');
+            void tokenEl.offsetWidth;
+            tokenEl.classList.add('flicker');
+
+            lastTokenNumbers[doc] = newToken;
+            currentDoctorIndex = DOCTORS.indexOf(doc);
+            resetInterval(); // restart 20s cycle
+            return; // stop here to display the most recent doctor first
+          }
+        }
+      }
+
       // Initial load
       await updateDisplayForCurrentDoctor();
       resetInterval();
 
-      // Real-time updates from Supabase
-      supabaseClient
-        .channel('realtime running_token_details')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'running_token_details' }, async (payload) => {
-          const changedDoctor = payload.new["DOCTOR NAME"];
-          if (DOCTORS.includes(changedDoctor)) {
-            const newTokenData = await fetchDoctorToken(changedDoctor);
-            if (newTokenData) {
-              // Immediately show the concerned doctor's new token
-              renderDisplay(newTokenData);
-              tokenEl.classList.remove('flicker');
-              void tokenEl.offsetWidth;
-              tokenEl.classList.add('flicker');
-
-              // Update tracking and reset timer
-              lastTokenNumbers[changedDoctor] = newTokenData["TOKEN NUMBER"];
-              currentDoctorIndex = DOCTORS.indexOf(changedDoctor);
-              resetInterval();
-            }
-          }
-        })
-        .subscribe();
+      // Start 2s polling loop
+      setInterval(pollForUpdates, 2000);
     });
   </script>
 </body>
